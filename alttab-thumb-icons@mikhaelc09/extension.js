@@ -5,6 +5,8 @@ const Cinnamon = imports.gi.Cinnamon;
 const ClassicSwitcher = imports.ui.appSwitcher.classicSwitcher;
 const WindowUtils = imports.misc.windowUtils;
 
+// Size (px, before UI scaling) of the app icon overlaid on the thumbnail's bottom-right corner.
+const OVERLAY_ICON_SIZE = 48;
 // Thumbnail box width limits (px, before UI scaling). The actual width is the
 // largest that fits all windows across the monitor, clamped to this range.
 const MAX_THUMB_WIDTH = 380;
@@ -73,6 +75,18 @@ function patchedSetSize(size) {
         this.icon.add_actor(clone.actor);
         clone.actor.set_position(clone.x + offsetX, clone.y + offsetY);
     }
+
+    // App icon overlapping the thumbnail's bottom-right corner, kept inside the box.
+    let iconSize = Math.round(OVERLAY_ICON_SIZE * scale);
+    let appIcon = this.app ?
+        this.app.create_icon_texture_for_window(OVERLAY_ICON_SIZE, this.window) :
+        new St.Icon({ icon_name: 'application-default-icon',
+                      icon_type: St.IconType.FULLCOLOR,
+                      icon_size: OVERLAY_ICON_SIZE });
+    this.icon.add_actor(appIcon);
+    let overhang = Math.round(iconSize * 0.3);
+    appIcon.set_position(Math.min(offsetX + cloneW - iconSize + overhang, boxW - iconSize),
+                         Math.min(offsetY + cloneH - iconSize + overhang, boxH - iconSize));
 
     this._iconBin.set_size(boxW, boxH);
     this._iconBin.child = this.icon;
