@@ -3,10 +3,21 @@ const St = imports.gi.St;
 const Pango = imports.gi.Pango;
 const Cinnamon = imports.gi.Cinnamon;
 const ClassicSwitcher = imports.ui.appSwitcher.classicSwitcher;
+const WindowUtils = imports.misc.windowUtils;
+
+// Thumbnail box width limits (px, before UI scaling). The actual width is the
+// largest that fits all windows across the monitor, clamped to this range.
+const MAX_THUMB_WIDTH = 380;
+const MIN_THUMB_WIDTH = 160;
+// Thumbnail box height as a fraction of its width.
+const THUMB_HEIGHT_RATIO = 0.7;
+// Never let the switcher grow taller than this fraction of the monitor height.
+const MAX_SCREEN_HEIGHT_FRACTION = 0.85;
 
 let origInit = null;
 let origSetSize = null;
 let origGetPreferredHeight = null;
+let origListInit = null;
 
 function patchedInit(window, showThumbnail) {
     if (!showThumbnail) {
@@ -39,23 +50,78 @@ function patchedInit(window, showThumbnail) {
 }
 
 function patchedSetSize(size) {
-    origSetSize.call(this, size);
+    if (!this.showThumbnail) {
+        origSetSize.call(this, size);
+        return;
+    }
+
+    let scale = global.ui_scale;
+    let boxW = Math.round(size * scale);
+    let boxH = Math.round(size * THUMB_HEIGHT_RATIO * scale);
+
+    this.icon = new St.Widget();
+    let clones = WindowUtils.createWindowClone(this.window, boxW, boxH, true, true);
+    // Center the (aspect-preserving) window image inside the box.
+    let cloneW = 0, cloneH = 0;
+    for (let clone of clones) {
+        cloneW = Math.max(cloneW, clone.x + clone.actor.width);
+        cloneH = Math.max(cloneH, clone.y + clone.actor.height);
+    }
+    let offsetX = Math.round((boxW - cloneW) / 2);
+    let offsetY = Math.round((boxH - cloneH) / 2);
+    for (let clone of clones) {
+        this.icon.add_actor(clone.actor);
+        clone.actor.set_position(clone.x + offsetX, clone.y + offsetY);
+    }
+
+    this._iconBin.set_size(boxW, boxH);
+    this._iconBin.child = this.icon;
     // Keep long titles from widening the item past the thumbnail.
-    if (this._titleBin)
-        this._titleBin.set_width(size * global.ui_scale);
+    this._titleBin.set_width(boxW);
+}
+
+function patchedListInit(windows, showThumbnails, activeMonitor) {
+    origListInit.call(this, windows, showThumbnails, activeMonitor);
+    // Thumbnail items are wider than tall; don't force them into squares.
+    if (showThumbnails)
+        this._squareItems = false;
 }
 
 function patchedGetPreferredHeight(actor, forWidth, alloc) {
-    origGetPreferredHeight.call(this, actor, forWidth, alloc);
-    // The original only reserves room for the bare label; account for the title's padding too.
     let first = this.icons && this.icons[0];
-    if (first && first._titleBin) {
-        let [, labelH] = first.label.get_preferred_height(-1);
-        let [, rowH] = first._titleBin.get_preferred_height(-1);
-        let extra = Math.max(0, rowH - labelH);
-        alloc.min_size += extra;
-        alloc.natural_size += extra;
+    if (!first || !first.showThumbnail || this._items.length < 1) {
+        origGetPreferredHeight.call(this, actor, forWidth, alloc);
+        return;
     }
+
+    let scale = global.ui_scale;
+    let itemNode = this._items[0].get_theme_node();
+    let itemHPad = itemNode.get_horizontal_padding() +
+        itemNode.get_border_width(St.Side.LEFT) + itemNode.get_border_width(St.Side.RIGHT);
+    let itemVPad = itemNode.get_vertical_padding() +
+        itemNode.get_border_width(St.Side.TOP) + itemNode.get_border_width(St.Side.BOTTOM);
+    let [, titleH] = first._titleBin.get_preferred_height(-1);
+
+    if (!this._thumbWidth) {
+        let n = this._items.length;
+        let totalSpacing = Math.max(0, this._list.spacing) * (n - 1);
+        let listNode = this.actor.get_theme_node();
+        let parentPadding = this.actor.get_parent().get_theme_node().get_horizontal_padding();
+        let availWidth = this._activeMonitor.width - parentPadding - listNode.get_horizontal_padding();
+        let availHeight = this._activeMonitor.height * MAX_SCREEN_HEIGHT_FRACTION -
+            listNode.get_vertical_padding() - itemVPad - titleH;
+
+        let width = ((availWidth - totalSpacing) / n - itemHPad) / scale;
+        width = Math.min(width, MAX_THUMB_WIDTH, availHeight / (THUMB_HEIGHT_RATIO * scale));
+        this._thumbWidth = Math.floor(Math.max(width, MIN_THUMB_WIDTH));
+
+        for (let icon of this.icons)
+            icon.set_size(this._thumbWidth);
+    }
+
+    let height = Math.round(this._thumbWidth * THUMB_HEIGHT_RATIO * scale) + titleH + itemVPad;
+    alloc.min_size = height;
+    alloc.natural_size = height;
 }
 
 function init(metadata) {}
@@ -68,10 +134,12 @@ function enable() {
         origInit = AppIcon._init;
         origSetSize = AppIcon.set_size;
         origGetPreferredHeight = AppList._getPreferredHeight;
+        origListInit = AppList._init;
     }
     AppIcon._init = patchedInit;
     AppIcon.set_size = patchedSetSize;
     AppList._getPreferredHeight = patchedGetPreferredHeight;
+    AppList._init = patchedListInit;
 }
 
 function disable() {
@@ -81,4 +149,5 @@ function disable() {
     if (origInit) AppIcon._init = origInit;
     if (origSetSize) AppIcon.set_size = origSetSize;
     if (origGetPreferredHeight) AppList._getPreferredHeight = origGetPreferredHeight;
+    if (origListInit) AppList._init = origListInit;
 }
