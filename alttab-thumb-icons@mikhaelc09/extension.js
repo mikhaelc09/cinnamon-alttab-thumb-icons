@@ -18,6 +18,12 @@ const MAX_SCREEN_HEIGHT_FRACTION = 0.85;
 // Opacity (0-255) of the titles of windows that are not selected.
 const DIMMED_TITLE_OPACITY = 110;
 
+// Inline styles override the theme (e.g. CBlack's solid blue selection), only for this switcher.
+const LIST_STYLE = 'border-radius: 18px; padding: 20px;';
+const LIST_CONTAINER_STYLE = 'spacing: 12px;';
+const ITEM_STYLE = 'padding: 12px; border-radius: 14px; border: 1px solid transparent; background-color: transparent;';
+const ITEM_SELECTED_STYLE = 'padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.22); background-color: rgba(255,255,255,0.14);';
+
 let origInit = null;
 let origSetSize = null;
 let origGetPreferredHeight = null;
@@ -100,9 +106,14 @@ function patchedSetSize(size) {
 
 function patchedListInit(windows, showThumbnails, activeMonitor) {
     origListInit.call(this, windows, showThumbnails, activeMonitor);
+    if (!showThumbnails)
+        return;
     // Thumbnail items are wider than tall; don't force them into squares.
-    if (showThumbnails)
-        this._squareItems = false;
+    this._squareItems = false;
+    this.actor.style = LIST_STYLE;
+    this._list.style = LIST_CONTAINER_STYLE;
+    for (let item of this._items)
+        item.style = ITEM_STYLE;
 }
 
 function patchedHighlight(index, justOutline) {
@@ -111,8 +122,10 @@ function patchedHighlight(index, justOutline) {
     if (!first || !first.showThumbnail)
         return;
     for (let i = 0; i < this._items.length; i++) {
+        let selected = i == index;
+        this._items[i].style = selected ? ITEM_SELECTED_STYLE : ITEM_STYLE;
         if (this.icons[i])
-            this.icons[i].label.opacity = i == index ? 255 : DIMMED_TITLE_OPACITY;
+            this.icons[i].label.opacity = selected ? 255 : DIMMED_TITLE_OPACITY;
     }
 }
 
