@@ -15,11 +15,14 @@ const MIN_THUMB_WIDTH = 160;
 const THUMB_HEIGHT_RATIO = 0.7;
 // Never let the switcher grow taller than this fraction of the monitor height.
 const MAX_SCREEN_HEIGHT_FRACTION = 0.85;
+// Opacity (0-255) of the titles of windows that are not selected.
+const DIMMED_TITLE_OPACITY = 110;
 
 let origInit = null;
 let origSetSize = null;
 let origGetPreferredHeight = null;
 let origListInit = null;
+let origHighlight = null;
 
 function patchedInit(window, showThumbnail) {
     if (!showThumbnail) {
@@ -45,6 +48,7 @@ function patchedInit(window, showThumbnail) {
     let title = window.get_title() || (this.app ? this.app.get_name() : '');
     this.label = new St.Label({ text: title });
     this.label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+    this.label.opacity = DIMMED_TITLE_OPACITY;
 
     this._titleBin = new St.Bin({ x_align: St.Align.MIDDLE, style: 'padding-top: 10px;' });
     this._titleBin.add_actor(this.label);
@@ -101,6 +105,17 @@ function patchedListInit(windows, showThumbnails, activeMonitor) {
         this._squareItems = false;
 }
 
+function patchedHighlight(index, justOutline) {
+    origHighlight.call(this, index, justOutline);
+    let first = this.icons && this.icons[0];
+    if (!first || !first.showThumbnail)
+        return;
+    for (let i = 0; i < this._items.length; i++) {
+        if (this.icons[i])
+            this.icons[i].label.opacity = i == index ? 255 : DIMMED_TITLE_OPACITY;
+    }
+}
+
 function patchedGetPreferredHeight(actor, forWidth, alloc) {
     let first = this.icons && this.icons[0];
     if (!first || !first.showThumbnail || this._items.length < 1) {
@@ -149,11 +164,13 @@ function enable() {
         origSetSize = AppIcon.set_size;
         origGetPreferredHeight = AppList._getPreferredHeight;
         origListInit = AppList._init;
+        origHighlight = AppList.highlight;
     }
     AppIcon._init = patchedInit;
     AppIcon.set_size = patchedSetSize;
     AppList._getPreferredHeight = patchedGetPreferredHeight;
     AppList._init = patchedListInit;
+    AppList.highlight = patchedHighlight;
 }
 
 function disable() {
@@ -164,4 +181,5 @@ function disable() {
     if (origSetSize) AppIcon.set_size = origSetSize;
     if (origGetPreferredHeight) AppList._getPreferredHeight = origGetPreferredHeight;
     if (origListInit) AppList._init = origListInit;
+    if (origHighlight) AppList.highlight = origHighlight;
 }
