@@ -1,0 +1,8 @@
+{
+    "uuid": "alttab-thumb-icons@mikhaelc09",
+    "name": "Alt-Tab Thumbnail Icons",
+    "description": "Ubuntu-style Alt-Tab (Thumbnails style): screen-fitted window thumbnails with a large app icon on the corner and the window title below.",
+    "url": "https://github.com/mikhaelc09/cinnamon-alttab-thumb-icons",
+    "version": "1.0",
+    "cinnamon-version": ["6.0", "6.2", "6.4", "6.6"]
+}
